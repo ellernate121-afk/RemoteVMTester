@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>VM Console</title>
+  <style>
+    body { margin: 0; background: #000; overflow: hidden; height: 100vh; }
+    #screen { width: 100%; height: 100%; }
+  </style>
+  <script type="module">
+    import RFB from 'https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/core/rfb.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const backend = params.get('backend') || 'http://localhost:3000';
+    const vmId = params.get('vmId');
+
+    const backendUrl = new URL(backend);
+    const wsProto = backendUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${backendUrl.host}?vmId=${vmId}`;
+
+    const rfb = new RFB(document.getElementById('screen'), wsUrl);
+    rfb.scaleViewport = true;
+    rfb.resizeSession = true;
+  </script>
+</head>
+<body>
+  <div id="screen"></div>
+</body>
+</html>
