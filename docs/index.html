@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Remote VM ISO Installer</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0f172a; color: white; margin: 30px; }
+    .card { background: #1e293b; padding: 20px; border-radius: 8px; max-width: 600px; margin-bottom: 20px; }
+    input, select, button { width: 100%; padding: 10px; margin: 8px 0; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; box-sizing: border-box; }
+    button { background: #0284c7; font-weight: bold; cursor: pointer; border: none; margin-top: 15px; }
+    button:hover { background: #0369a1; }
+    .vm-item { display: flex; justify-content: space-between; align-items: center; background: #334155; padding: 10px; margin-top: 8px; border-radius: 4px; }
+    .btn-sm { width: auto; padding: 6px 12px; margin-left: 5px; }
+  </style>
+</head>
+<body>
+
+  <h1>Remote VM Installer</h1>
+
+  <!-- Backend Endpoint -->
+  <div class="card">
+    <h3>Server Configuration</h3>
+    <label>Backend URL (e.g. http://your-vps-ip:3000):</label>
+    <input type="text" id="backendUrl" value="http://localhost:3000">
+    <button onclick="saveAndConnect()">Connect & Load</button>
+  </div>
+
+  <!-- Upload Form -->
+  <div class="card">
+    <h3>1. Upload ISO from your PC</h3>
+    <input type="file" id="isoFileInput" accept=".iso">
+    <button onclick="uploadISO()">Upload to Server</button>
+    <div id="uploadStatus"></div>
+  </div>
+
+  <!-- VM Creation Form -->
+  <div class="card">
+    <h3>2. Launch Installer</h3>
+    <label>VM Name:</label>
+    <input type="text" id="vmName" value="My-New-OS">
+
+    <label>Choose Uploaded ISO:</label>
+    <select id="isoSelect"></select>
+
+    <label>RAM (MB):</label>
+    <input type="number" id="vmRam" value="2048">
+
+    <label>Disk Size (GB):</label>
+    <input type="number" id="vmDisk" value="20">
+
+    <button onclick="createVM()">🚀 Start VM & Open Console</button>
+  </div>
+
+  <!-- VM List -->
+  <div class="card">
+    <h3>Running Virtual Machines</h3>
+    <div id="vmList"></div>
+  </div>
+
+  <script>
+    function getApi() {
+      return document.getElementById('backendUrl').value.replace(/\/$/, '');
+    }
+
+    function saveAndConnect() {
+      localStorage.setItem('vm_backend_url', getApi());
+      loadISOs();
+      loadVMs();
+    }
+
+    window.onload = () => {
+      const saved = localStorage.getItem('vm_backend_url');
+      if (saved) document.getElementById('backendUrl').value = saved;
+      loadISOs();
+      loadVMs();
+    };
+
+    async function loadISOs() {
+      try {
+        const res = await fetch(`${getApi()}/api/isos`);
+        const list = await res.json();
+        const sel = document.getElementById('isoSelect');
+        sel.innerHTML = list.map(f => `<option value="${f}">${f}</option>`).join('');
+      } catch (e) {
+        console.error('Failed to load ISOs', e);
+      }
+    }
+
+    async function uploadISO() {
+      const input = document.getElementById('isoFileInput');
+      if (!input.files.length) return alert('Select an ISO first');
+      const formData = new FormData();
+      formData.append('iso', input.files[0]);
+
+      document.getElementById('uploadStatus').innerText = 'Uploading...';
+      const res = await fetch(`${getApi()}/api/upload-iso`, { method: 'POST', body: formData });
+      const data = await res.json();
+      document.getElementById('uploadStatus').innerText = data.message || data.error;
+      loadISOs();
+    }
+
+    async function createVM() {
+      const payload = {
+        name: document.getElementById('vmName').value,
+        isoName: document.getElementById('isoSelect').value,
+        ramMB: parseInt(document.getElementById('vmRam').value),
+        diskGB: parseInt(document.getElementById('vmDisk').value)
+      };
+
+      const res = await fetch(`${getApi()}/api/create-vm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.vmId) {
+        window.open(`console.html?backend=${encodeURIComponent(getApi())}&vmId=${data.vmId}`, '_blank');
+        loadVMs();
+      } else {
+        alert(data.error);
+      }
+    }
+
+    async function loadVMs() {
+      try {
+        const res = await fetch(`${getApi()}/api/vms`);
+        const vms = await res.json();
+        const container = document.getElementById('vmList');
+        if (!vms.length) { container.innerHTML = '<p>No active VMs</p>'; return; }
+        container.innerHTML = vms.map(v => `
+          <div class="vm-item">
+            <span>${v.name}</span>
+            <div>
+              <button class="btn-sm" onclick="window.open('console.html?backend=${encodeURIComponent(getApi())}&vmId=${v.id}', '_blank')">Console</button>
+              <button class="btn-sm" style="background:#dc2626;" onclick="stopVM('${v.id}')">Stop</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.error('Failed to load VMs', e);
+      }
+    }
+
+    async function stopVM(vmId) {
+      await fetch(`${getApi()}/api/stop-vm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vmId })
+      });
+      loadVMs();
+    }
+  </script>
+</body>
+</html>
